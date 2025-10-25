@@ -27,7 +27,7 @@ The main training script (`train.py`) performs continued pretraining using Maske
 - Filters out empty or None texts.
 - Splits data into train (90%) and eval (10%).
 - Supports test mode (subsamples 3k examples for quick testing).
-- Uses BF16 precision for A100 GPUs.
+- Uses BF16 precision for A100/H100/H200 GPUs.
 - Logs to TensorBoard for monitoring.
 
 #### Running Training

@@ -32,7 +32,7 @@ The main training script (`train.py`) performs continued pretraining using Maske
 
 #### Running Training
 ```bash
-accelerate launch train.py
+accelerate launch ruBERT_RuLaw - 3xH200.py
 ```
 
 - **Test Mode**: Set `test_mode = True` in the script for a quick run (3 epochs, 3k samples, fewer steps).
@@ -49,7 +49,7 @@ Hyperparameters (configurable in `TrainingArguments`):
 
 ### Evaluation
 
-The evaluation script (`evaluate.py`) tests MLM accuracy (Top-1 and Top-k, k=5) across multiple models, including the fine-tuned ruBERT-ruLaw, on the [sud-resh-benchmark dataset](https://huggingface.co/datasets/lawful-good-project/sud-resh-benchmark).
+The evaluation script (`Test_MLM.py`) tests MLM accuracy (Top-1 and Top-k, k=5) across multiple models, including the fine-tuned ruBERT-ruLaw, on the [sud-resh-benchmark dataset](https://huggingface.co/datasets/lawful-good-project/sud-resh-benchmark).
 
 #### Key Features
 - Sliding window tokenization for long texts.

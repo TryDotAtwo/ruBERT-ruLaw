@@ -32,7 +32,7 @@ The main training script (`train.py`) performs continued pretraining using Maske
 
 #### Running Training
 ```bash
-python train.py
+accelerate launch train.py
 ```
 
 - **Test Mode**: Set `test_mode = True` in the script for a quick run (3 epochs, 3k samples, fewer steps).

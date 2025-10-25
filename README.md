@@ -60,7 +60,7 @@ The evaluation script (`Test_MLM.py`) tests MLM accuracy (Top-1 and Top-k, k=5) 
 
 #### Running Evaluation
 ```bash
-python evaluate.py
+python Test_MLM.py
 ```
 
 - **Limit Texts**: Set `limit_texts = N` (e.g., 1000) for partial runs.
@@ -69,7 +69,7 @@ python evaluate.py
 
 ## Results
 
-[Placeholder: Evaluation results will be added here once testing is complete. Preliminary tests show improvements in Top-1 MLM accuracy over base RuBERT by ~5-10% on legal texts.]
+[Placeholder: Evaluation results will be added here once testing is complete]
 
 ### TensorBoard Graphs
 

@@ -1,0 +1,301 @@
+﻿import random
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+from transformers import AutoTokenizer, AutoModelForMaskedLM
+from datasets import load_dataset
+import os
+from tqdm import tqdm
+import json
+import warnings
+from transformers import logging
+
+# Подавляем предупреждения от transformers (опционально, но для чистоты вывода)
+logging.set_verbosity_error()
+warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
+
+# Этап 1: Настройка
+def set_seeds(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+# Функция для sliding window токенизации
+def tokenize_with_sliding_window(texts, tokenizer, max_len, stride):
+    all_windows = []
+    cls_token_id = tokenizer.cls_token_id or tokenizer.convert_tokens_to_ids(tokenizer.cls_token)
+    sep_token_id = tokenizer.sep_token_id or tokenizer.convert_tokens_to_ids(tokenizer.sep_token)
+    for text in texts:
+        tokens = tokenizer.tokenize(text)
+        if len(tokens) <= max_len - 2:  # Учитываем [CLS] и [SEP]
+            input_ids = [cls_token_id] + tokenizer.convert_tokens_to_ids(tokens) + [sep_token_id]
+            if len(input_ids) > max_len:
+                input_ids = input_ids[:max_len]
+            all_windows.append(input_ids)
+        else:
+            # Sliding window
+            for i in range(0, len(tokens) - (max_len - 2) + 1, stride):
+                window_tokens = tokens[i:i + max_len - 2]
+                input_ids = [cls_token_id] + tokenizer.convert_tokens_to_ids(window_tokens) + [sep_token_id]
+                if len(input_ids) > max_len:
+                    input_ids = input_ids[:max_len]
+                all_windows.append(input_ids)
+    return all_windows
+
+if __name__ == "__main__":
+    # Настройка
+    set_seeds()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Используется устройство: {device}")
+
+    # Для стабильности CUDA (оптимизация inference)
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+
+    # Параметры
+    max_len = 512
+    stride = 128
+    topk = 5
+    mlm_probabilities = np.arange(0.1, 0.45, 0.05)
+    eval_batch_size = 16  # Увеличено для лучшей загрузки GPU; уменьши до 8, если OOM
+    limit_texts = None  # None для всех (убрал ограничение для полного запуска)
+
+    results_file = "mlm_results.pth"
+
+    # Список моделей
+    models = [
+        "TryDotAtwo/ruBERT-ruLaw",
+        "DeepPavlov/rubert-base-cased",
+        "nlpaueb/legal-bert-base-uncased",
+        "google-bert/bert-base-uncased",
+        "sentence-transformers/all-MiniLM-L6-v2",
+        "google-bert/bert-base-multilingual-cased",
+        "allenai/scibert_scivocab_uncased",
+        "moka-ai/m3e-base",
+        "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank",
+        "google-bert/bert-large-uncased-whole-word-masking-finetuned-squad"
+    ]
+
+    # Этап 2: Загрузка датасета
+    print("Загрузка датасета...")
+    dataset = load_dataset("lawful-good-project/sud-resh-benchmark", split="train")
+    texts = [item["source"] for item in dataset if "source" in item and item["source"].strip()]
+    if limit_texts is not None:
+        texts = texts[:limit_texts]
+        print(f"Используется {limit_texts} текстов.")
+    print(f"Загружено {len(texts)} текстов.")
+
+    # Инициализация/загрузка результатов для возобновления (фикс PyTorch 2.6+)
+    resume = False  # Установи True для возобновления, False — для заново
+
+    # Всегда начинаем с пустого словаря results
+    results = {}
+
+    if os.path.exists(results_file):
+        if resume:
+            print(f"Загружаем результаты из {results_file} для возобновления...")
+            try:
+                results = torch.load(results_file, weights_only=False)
+                if not isinstance(results, dict):
+                    print("  Структура некорректна, начинаем заново.")
+                    results = {}
+            except Exception as load_err:
+                print(f"Ошибка загрузки: {load_err}. Начинаем заново.")
+                results = {}
+        else:
+            print("Принудительная очистка: удаляем старые результаты.")
+            os.remove(results_file)
+    else:
+        print(f"Файл {results_file} не существует, начинаем заново.")
+
+
+
+    # Этап 4-6: Основной цикл
+    for model_name in models:
+        model_results = results.get(model_name, {})
+        # Проверяем, есть ли реальные результаты (ненулевые метрики)
+        if isinstance(model_results, dict) and all(p in model_results and (model_results[p]["top1"] != 0.0 or model_results[p]["topk"] != 0.0) for p in mlm_probabilities):
+            print(f"Модель {model_name} уже завершена, пропускаем.")
+            continue
+    
+        print(f"\nОбработка модели: {model_name}")
+    
+        try:
+            # Загрузка токенизатора и модели
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            if tokenizer.mask_token is None:
+                tokenizer.add_special_tokens({"mask_token": "[MASK]"})
+                tokenizer.mask_token = "[MASK]"
+            mask_token_id = tokenizer.mask_token_id
+        
+            model = AutoModelForMaskedLM.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+        except Exception as e:
+            print(f"Ошибка загрузки модели {model_name}: {e}")
+            continue
+    
+        # Токенизация для этой модели
+        all_windows = tokenize_with_sliding_window(texts, tokenizer, max_len, stride)
+        print(f"Создано {len(all_windows)} окон.")
+    
+        # Инициализация для модели, если нет
+        if model_name not in results:
+            results[model_name] = {prob: {"top1": 0.0, "topk": 0.0} for prob in mlm_probabilities}
+        model_results = results[model_name]
+    
+        # Для каждой вероятности MLM
+        for mlm_prob in mlm_probabilities:
+            # Пропускаем только если есть ненулевые метрики
+            if mlm_prob in model_results and (model_results[mlm_prob]["top1"] != 0.0 or model_results[mlm_prob]["topk"] != 0.0):
+                print(f"  MLM вероятность: {mlm_prob} уже завершена, пропускаем.")
+                continue
+        
+            print(f"  MLM вероятность: {mlm_prob}")
+            
+            # Маскировка для всех окон (теперь с сохранением оригиналов по окнам)
+            masked_windows = []
+            original_tokens_list = []  # Список списков оригинальных токенов для каждого окна
+            mask_positions_list = []  # Список позиций масок для каждого окна (для индексации logits позже)
+            
+            for window_ids in all_windows:
+                # Кандидаты для маскировки (не специальные токены)
+                special_ids = set([tokenizer.cls_token_id, tokenizer.sep_token_id, tokenizer.pad_token_id] + tokenizer.all_special_ids)
+                candidate_indices = [i for i in range(1, len(window_ids) - 1) if window_ids[i] not in special_ids]  # Исключаем CLS и SEP
+                
+                if len(candidate_indices) == 0:
+                    continue
+                    
+                n_to_mask = max(1, int(len(candidate_indices) * mlm_prob))  # Минимум 1, если возможно
+                if n_to_mask > len(candidate_indices):
+                    n_to_mask = len(candidate_indices)
+                    
+                mask_indices = np.random.choice(candidate_indices, n_to_mask, replace=False)
+                
+                # Копируем окно
+                masked_window = window_ids.copy()
+                orig_in_mask = []
+                
+                for idx in mask_indices:  # Убрал sorted — не нужно для индексации
+                    orig_token = masked_window[idx]
+                    masked_window[idx] = mask_token_id
+                    orig_in_mask.append(orig_token)
+                
+                masked_windows.append(masked_window)
+                original_tokens_list.append(orig_in_mask)
+                mask_positions_list.append(mask_indices.tolist())  # list для индексации
+            
+            if not masked_windows:
+                continue
+            
+            # Батчи для инференса
+            def collate_fn(batch):
+                # batch: list of lists (input_ids)
+                batch_dicts = [{'input_ids': ids} for ids in batch]
+                return tokenizer.pad(
+                    batch_dicts,
+                    padding='max_length',
+                    max_length=max_len,
+                    return_tensors="pt"
+                )
+            
+            dataloader = DataLoader(
+                masked_windows,
+                batch_size=eval_batch_size,
+                collate_fn=collate_fn,
+                shuffle=False,
+                num_workers=0,  # 0 для Windows, чтобы избежать проблем; на Linux можно 2 для prefetch
+                pin_memory=torch.cuda.is_available()  # Ускоряет transfer на GPU
+            )
+            
+            # Аккумуляторы метрик
+            top1_correct = 0
+            topk_correct = 0
+            total_masked = 0
+            
+            with torch.inference_mode(), torch.amp.autocast('cuda'):  # FP16 для ускорения (исправлен deprecation)
+                for batch_idx, batch in enumerate(tqdm(dataloader, desc="Инференс", mininterval=2.0, miniters=50, smoothing=0)):
+
+                    input_ids = batch["input_ids"].to(device, non_blocking=True)
+                    attention_mask = batch["attention_mask"].to(device, non_blocking=True)
+                    
+                    outputs = model(input_ids, attention_mask=attention_mask)
+                    logits = outputs.logits  # [batch, seq, vocab]
+                    
+                    batch_size_actual = input_ids.size(0)
+                    
+                    # Минимизируем Python: собираем orig и positions заранее для батча
+                    batch_orig_tokens = []
+                    batch_mask_indices = []
+                    
+                    for b in range(batch_size_actual):
+                        window_idx = batch_idx * eval_batch_size + b
+                        mask_positions = mask_positions_list[window_idx]
+                        if len(mask_positions) == 0:
+                            continue
+                        
+                        # Извлекаем logits для масок (на GPU)
+                        mask_logits_b = logits[b, mask_positions]  # [num_masks, vocab]
+                        
+                        # Оригиналы
+                        orig_b = original_tokens_list[window_idx]
+                        batch_orig_tokens.extend(orig_b)
+                        batch_mask_indices.append(mask_positions)
+                    
+                    if not batch_orig_tokens:
+                        continue
+                    
+                    # Cat на GPU
+                    batch_orig_tensor = torch.tensor(batch_orig_tokens, device=device, dtype=torch.long)
+                    batch_mask_logits_tensor = torch.cat([logits[b, mask_positions_list[batch_idx * eval_batch_size + b]] for b in range(batch_size_actual) if len(mask_positions_list[batch_idx * eval_batch_size + b]) > 0], dim=0)
+                    
+                    # Top-k на GPU
+                    topk_preds = torch.topk(batch_mask_logits_tensor, topk, dim=-1)
+                    
+                    # Top-1
+                    pred_tokens = topk_preds.indices[:, 0]
+                    top1_correct += torch.sum(pred_tokens == batch_orig_tensor).item()
+                    
+                    # Top-k
+                    topk_correct += torch.sum(torch.isin(batch_orig_tensor.unsqueeze(1), topk_preds.indices), dim=1).sum().item()
+                    
+                    total_masked += len(batch_orig_tokens)
+            
+            if total_masked > 0:
+                top1_acc = top1_correct / total_masked
+                topk_acc = topk_correct / total_masked
+                results[model_name][mlm_prob]["top1"] = top1_acc
+                results[model_name][mlm_prob]["topk"] = topk_acc
+                print(f"    Top-1 accuracy: {top1_acc:.4f}")
+                print(f"    Top-{topk} accuracy: {topk_acc:.4f}")
+            else:
+                print("    Нет масок для оценки.")
+            
+            # Сохранение после mlm_prob для контрольной точки
+            torch.save(results, results_file)  # Убрал weights_only (только для load)
+            print(f"  Результаты для {mlm_prob} сохранены.")
+        
+        # Сохранение после модели
+        torch.save(results, results_file)
+        print(f"Результаты для {model_name} сохранены в {results_file}")
+        
+        # Освобождение памяти (только после всей модели)
+        del model, tokenizer
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    # Этап 7: Финальное сохранение и вывод
+    print("\nТестирование завершено.")
+    print("Результаты:")
+    for model_name, probs in results.items():
+        print(f"\n{model_name}:")
+        for prob, metrics in probs.items():
+            print(f"  MLM {prob}: Top-1 = {metrics['top1']:.4f}, Top-{topk} = {metrics['topk']:.4f}")
+
+    # Сохранение в JSON
+    with open("mlm_results.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
+
+    print("Результаты также сохранены в mlm_results.json для построения графиков.")

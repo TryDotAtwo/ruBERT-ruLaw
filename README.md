@@ -20,7 +20,7 @@ Run the training or evaluation script directly, and it will install missing pack
 
 ### Training
 
-The main training script (`train.py`) performs continued pretraining using Masked Language Modeling (MLM) on the RusLawOD dataset.
+The main training script (`ruBERT_RuLaw - 3xH200.py.py`) performs continued pretraining using Masked Language Modeling (MLM) on the RusLawOD dataset.
 
 #### Key Features
 - Tokenization with sliding window (max_length=512, stride=128) to handle long legal documents.

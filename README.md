@@ -101,9 +101,6 @@ Results reflect performance across all masked tokens, aggregated for the dataset
 |        40%        |  Top-5   |   **78.5%**    |        8.5%         |           71.7%           |
 
 
-
-[Placeholder: Evaluation results will be added here once testing is complete]
-
 ### TensorBoard Graphs
 
 View training progress via TensorBoard:

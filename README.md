@@ -69,6 +69,17 @@ python Test_MLM.py
 
 ## Results
 
+## MLM Accuracy Comparison by Masking Probability
+|     | MLM Probability   |   TryDotAtwo/ruBERT-ruLaw Top-1 |   TryDotAtwo/ruBERT-ruLaw Top-5 |   DeepPavlov/rubert-base-cased Top-1 |   DeepPavlov/rubert-base-cased Top-5 |   nlpaueb/legal-bert-base-uncased Top-1 |   nlpaueb/legal-bert-base-uncased Top-5 |
+|:----|:------------------|--------------------------------:|--------------------------------:|-------------------------------------:|-------------------------------------:|----------------------------------------:|----------------------------------------:|
+| 10% | 10%               |                          0.81   |                          0.9222 |                               0.7296 |                               0.8705 |                                  0.453  |                                  0.7721 |
+| 15% | 15%               |                          0.7884 |                          0.9079 |                               0.6789 |                               0.8321 |                                  0.4529 |                                  0.7667 |
+| 20% | 20%               |                          0.7631 |                          0.8903 |                               0.5385 |                               0.715  |                                  0.4497 |                                  0.7588 |
+| 25% | 25%               |                          0.7357 |                          0.8704 |                               0.1798 |                               0.3193 |                                  0.4438 |                                  0.7502 |
+| 30% | 30%               |                          0.7037 |                          0.846  |                               0.0586 |                               0.1086 |                                  0.4377 |                                  0.7402 |
+| 35% | 35%               |                          0.6689 |                          0.8187 |                               0.06   |                               0.0913 |                                  0.4293 |                                  0.7291 |
+| 40% | 40%               |                          0.6287 |                          0.7853 |                               0.0603 |                               0.0853 |                                  0.4193 |                                  0.7166 |
+
 [Placeholder: Evaluation results will be added here once testing is complete]
 
 ### TensorBoard Graphs

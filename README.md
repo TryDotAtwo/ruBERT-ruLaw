@@ -71,9 +71,9 @@ python Test_MLM.py
 
 ### Evaluation Overview
 
-Models were tested on the [`sud-resh-benchmark in Hugging Face`](https://huggingface.co/datasets/lawful-good-project/sud-resh-benchmark/tree/main) legal texts using a masked language modeling setup. Tokens were randomly masked at varying probabilities (10–40%), and models predicted them using their pre-trained heads.
+Models were tested on the [`sud-resh-benchmark`](https://huggingface.co/datasets/lawful-good-project/sud-resh-benchmark/tree/main) legal texts using a masked language modeling setup. Tokens were randomly masked at varying probabilities (10–40%), and models predicted them using their pre-trained heads.
 
-> **Note:** The models were **pre-trained on legal texts such as laws and statutes**, but **not specifically on judicial decisions**. The evaluation reflects how well they generalize to predicting masked tokens in Russian court rulings.
+> **Note:** The ruBERT-ruLaw model was **pre-trained on legal texts such as laws and statutes**, but **not specifically on judicial decisions**. The evaluation reflects how well it generalizes to predicting masked tokens in Russian court rulings.
 
 * **Top-1 Accuracy:** fraction of masked tokens predicted exactly.
 * **Top-5 Accuracy:** fraction of masked tokens predicted within the top 5 candidates.
